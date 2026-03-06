@@ -77,7 +77,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.checkpoint_engine.update_weights_bucket_megabytes=4096 \
     algorithm.use_kl_in_reward=False \
     trainer.critic_warmup=0 \
-    trainer.logger='["console","wandb"]' \
+    trainer.logger='["console","tensorboard"]' \
     trainer.project_name="${PROJECT_NAME}" \
     trainer.experiment_name=${EXP_NAME} \
     trainer.n_gpus_per_node=8 \
