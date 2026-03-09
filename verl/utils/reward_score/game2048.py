@@ -313,6 +313,9 @@ def extract_function(text: str) -> Optional[str]:
 # Top-level compute_score (verl interface)
 # ---------------------------------------------------------------------------
 
+_PRINTER = 0  # module-level counter, increments per sample (per Ray worker)
+
+
 def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dict] = None) -> float:
     """
     Compute the reward for a 2048 strategy generation response.
@@ -328,16 +331,24 @@ def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dic
           no_cheating     (+1.0 stdlib-only / -20.0 uses third-party libs)
           strategy_result (+20.0 wins / +2.0 runs but loses / -1.0 timeout / 0 crash)
     """
+    global _PRINTER
     import numpy as np
 
     function = extract_function(solution_str)
 
+    should_print = (_PRINTER % 5 == 0)
+    _PRINTER += 1
+
     # ---- function_works ----
     if function is None:
+        if should_print:
+            print(f"[2048] sample {_PRINTER} | no function found | score=-2.0")
         return -2.0  # No function found at all
 
     ok, info = check_python_modules(function)
     if "error" in info:
+        if should_print:
+            print(f"[2048] sample {_PRINTER} | syntax error | score=-2.0\n{function}\n")
         return -2.0  # Syntax error
 
     try:
@@ -350,12 +361,16 @@ def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dic
     # ---- no_cheating ----
     if not ok:
         score += -20.0
-        return score  # No point running a cheating function
+        if should_print:
+            print(f"[2048] sample {_PRINTER} | cheating detected | score={score}\n{function}\n")
+        return score
     else:
         score += 1.0
 
     # ---- strategy_result ----
     seed = (extra_info or {}).get("seed", int(np.random.randint(10000)))
+    game_state = "unknown"
+    steps = 0
     try:
         game = GameBoard(size=6, seed=seed, target=2048, probability_fours=0.10)
         steps, game_state = execute_strategy_with_timeout(strategy_fn, game, timeout_seconds=5)
@@ -364,8 +379,13 @@ def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dic
         else:
             score += 2.0
     except _TimeoutError:
+        game_state = "timeout"
         score += -1.0
     except Exception:
+        game_state = "exception"
         score += -3.0
+
+    if should_print:
+        print(f"[2048] sample {_PRINTER} | steps={steps} state={game_state} score={score}\n{function}\n")
 
     return score

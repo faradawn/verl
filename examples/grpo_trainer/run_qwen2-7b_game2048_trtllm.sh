@@ -20,8 +20,10 @@ set -x
 # -----------------------------------------------------------------------
 # Logging — tee output to 2048_log_<date>_<time>.txt next to this script
 # -----------------------------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="${SCRIPT_DIR}/2048_log_$(date +%Y%m%d_%H%M%S).txt"
+VERL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+LOG_DIR="${VERL_ROOT}/my_logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/2048_log_$(date +%Y%m%d_%H%M%S).txt"
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "Logging to $LOG_FILE"
 
@@ -36,14 +38,14 @@ export RAY_DEDUP_LOGS=0
 # Config
 # -----------------------------------------------------------------------
 TP=${1:-4}
-MODEL_PATH=${MODEL_PATH:-"Qwen/Qwen2-7B-Instruct"}
+MODEL_PATH=${MODEL_PATH:-"Qwen/Qwen2.5-Coder-7B-Instruct"}
 DATADIR=${DATADIR:-"$HOME/data/game2048"}
 
 TRAIN_PATH="$DATADIR/train.parquet"
 TEST_PATH="$DATADIR/test.parquet"
 
 PROJECT_NAME=${PROJECT_NAME:-"verl_grpo_game2048"}
-EXP_NAME="trtllm-qwen2-7b-game2048-tp${TP}-8gpus${EXP_NAME_SUFFIX:+"-"}${EXP_NAME_SUFFIX}"
+EXP_NAME="trtllm-qwen2.5-coder-7b-game2048-tp${TP}-8gpus${EXP_NAME_SUFFIX:+"-"}${EXP_NAME_SUFFIX}"
 
 if [ $TP -eq 4 ]; then
     MAX_BATCH_SIZE=1024
@@ -86,7 +88,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.mode="async" \
     actor_rollout_ref.rollout.tensor_model_parallel_size=${TP} \
     actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
-    actor_rollout_ref.rollout.n=5 \
+    actor_rollout_ref.rollout.n=2 \
     actor_rollout_ref.rollout.max_num_seqs=${MAX_BATCH_SIZE} \
     actor_rollout_ref.rollout.max_num_batched_tokens=32768 \
     +actor_rollout_ref.rollout.engine_kwargs.trtllm.batch_wait_timeout_iters=32 \
