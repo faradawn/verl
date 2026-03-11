@@ -276,23 +276,64 @@ class _TimeoutError(Exception):
         self.steps = steps
 
 
-def execute_strategy_with_timeout(strategy: Callable, game: GameBoard, timeout_seconds: int = 5):
-    """Run strategy(board) in a loop until game ends or timeout.
-    Uses a time-based check so it works safely inside Ray worker threads
-    (signal.SIGALRM only works in the main thread).
+def execute_strategy_with_timeout(strategy: Callable, game: GameBoard,
+                                   timeout_seconds: int = 5,
+                                   strategy_code: Optional[str] = None):
+    """Run strategy(board) until the game ends or the timeout fires.
+
+    Uses SIGALRM in the main thread (tests/scripts) and
+    PyThreadState_SetAsyncExc in worker threads (Ray run_in_executor) so that
+    a blocking strategy call is hard-interrupted in both contexts.
+    strategy_code is accepted for API compatibility but unused here.
     """
-    import time
-    deadline = time.time() + timeout_seconds
+    import signal
+    import threading
+
     steps = 0
-    while game.state() == "ongoing":
-        if time.time() > deadline:
+
+    if threading.current_thread() is threading.main_thread():
+        # Main thread: use SIGALRM — hard-interrupts even C-level waits.
+        class _Alarm(Exception):
+            pass
+
+        def _alarm_handler(signum, frame):
+            raise _Alarm()
+
+        old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+        remaining = signal.alarm(timeout_seconds)
+        try:
+            while game.state() == "ongoing":
+                action = strategy([row[:] for row in game.board()])
+                steps += 1
+                if not isinstance(action, str):
+                    return steps, "failed"
+                game.do_action(action)
+            return steps, game.state()
+        except _Alarm:
             raise _TimeoutError("Strategy timed out", steps=steps)
-        action = strategy(list(game.board()))
-        steps += 1
-        if not isinstance(action, str):
-            return steps, "failed"
-        game.do_action(action)
-    return steps, game.state()
+        finally:
+            signal.alarm(remaining)
+            signal.signal(signal.SIGALRM, old_handler)
+    else:
+        # Worker thread (Ray run_in_executor): use a threading.Event flag set
+        # by a Timer.  No exception injection — _TimeoutError is only raised
+        # from this thread at a safe check point, so it can never escape into
+        # Ray's event loop or disrupt the training-step logger.
+        timed_out = threading.Event()
+        timer = threading.Timer(timeout_seconds, timed_out.set)
+        timer.start()
+        try:
+            while game.state() == "ongoing":
+                if timed_out.is_set():
+                    raise _TimeoutError("Strategy timed out", steps=steps)
+                action = strategy([row[:] for row in game.board()])
+                steps += 1
+                if not isinstance(action, str):
+                    return steps, "failed"
+                game.do_action(action)
+            return steps, game.state()
+        finally:
+            timer.cancel()
 
 
 # ---------------------------------------------------------------------------
@@ -369,10 +410,14 @@ def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dic
     seed = (extra_info or {}).get("seed", int(np.random.randint(10000)))
     game_state = "unknown"
     steps = 0
+    game_score = 0
+    max_tile = 0
     exc_msg = ""
+    game = GameBoard(size=4, seed=seed, target=256, probability_fours=0.10)
     try:
-        game = GameBoard(size=4, seed=seed, target=256, probability_fours=0.10)
-        steps, game_state = execute_strategy_with_timeout(strategy_fn, game, timeout_seconds=5)
+        steps, game_state = execute_strategy_with_timeout(
+            strategy_fn, game, timeout_seconds=5, strategy_code=function
+        )
         if game_state == "success":
             score += 20.0
         else:
@@ -383,9 +428,22 @@ def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dic
         score += -1.0
     except Exception as e:
         game_state = "exception"
-        exc_msg = f" | error={type(e).__name__}: {e}"
+        exc_msg = f" - error:{type(e).__name__}:{e}"
         score += -3.0
 
-    print(f"[2048] steps={steps} state={game_state} score={score}{exc_msg}\n{function}\n")
+    # Capture game stats regardless of how the game ended.
+    game_score = game.score()
+    max_tile = max(c for row in game.board() for c in row)
+
+    fields = [
+        f"game/state:{game_state}",
+        f"game/steps:{steps}",
+        f"game/score:{game_score}",
+        f"game/max_tile:{max_tile}",
+        f"reward/total:{score}",
+    ]
+    if exc_msg:
+        fields.append(exc_msg.lstrip(" - "))
+    print(f"[2048] {' - '.join(fields)}\n{function}\n")
 
     return score

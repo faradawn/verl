@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
 # Train Qwen2-7B-Instruct to generate 2048 game strategies via GRPO + trtllm.
-#
-# Closely follows run_qwen2-7b_math_trtllm.sh — only the data paths,
-# prompt/response lengths, and rollout.n are changed for the 2048 task.
-#
-# Why 7B instead of gpt-oss-20b?
-#   7B bf16 ≈ 14 GB vs 20B ≈ 40 GB, leaving much more room for trtllm KV cache
-#   and FSDP optimizer states on each H100 (140 GB).
-#
 # Before running, generate the dataset:
 #   python examples/data_preprocess/game2048.py --local_save_dir ~/data/game2048
 #
@@ -62,7 +54,7 @@ python3 -m verl.trainer.main_ppo \
     \
     data.train_files="['$TRAIN_PATH']" \
     data.val_files="['$TEST_PATH']" \
-    data.train_batch_size=1 \
+    data.train_batch_size=8 \
     data.max_prompt_length=256 \
     data.max_response_length=1024 \
     data.return_raw_chat=True \
@@ -75,8 +67,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     \
     actor_rollout_ref.actor.optim.lr=1e-6 \
-    actor_rollout_ref.actor.ppo_mini_batch_size=2 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=8 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
@@ -94,10 +86,10 @@ python3 -m verl.trainer.main_ppo \
     +actor_rollout_ref.rollout.engine_kwargs.trtllm.batch_wait_timeout_iters=32 \
     +actor_rollout_ref.rollout.engine_kwargs.trtllm.batch_wait_max_tokens_ratio=0.5 \
     actor_rollout_ref.rollout.calculate_log_probs=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.checkpoint_engine.update_weights_bucket_megabytes=4096 \
     \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     \
     algorithm.use_kl_in_reward=False \

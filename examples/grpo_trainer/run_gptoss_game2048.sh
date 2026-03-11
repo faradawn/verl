@@ -42,15 +42,15 @@ export RAY_DEDUP_LOGS=0
 # -----------------------------------------------------------------------
 # Config  (override via env vars)
 # -----------------------------------------------------------------------
-TP=${1:-4}
+TP=${1:-8}
 MODEL_PATH=${MODEL_PATH:-"$HOME/models/gpt-oss-20b-bf16"}
 DATADIR=${DATADIR:-"$HOME/data/game2048"}
 
 TRAIN_PATH="$DATADIR/train.parquet"
 TEST_PATH="$DATADIR/test.parquet"
 
-PROJECT_NAME=${PROJECT_NAME:-"verl_grpo_game2048"}
-EXP_NAME=${EXP_NAME:-"gptoss-20b-game2048-trtllm-tp${TP}"}
+PROJECT_NAME=${PROJECT_NAME:-"gptoss_20b_game2048"}
+EXP_NAME=${EXP_NAME:-"gptoss_20b_game2048_tp${TP}"}
 
 if [ $TP -eq 4 ]; then
     MAX_BATCH_SIZE=1024
