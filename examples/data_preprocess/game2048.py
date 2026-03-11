@@ -35,14 +35,14 @@ DATA_SOURCE = "game2048"
 
 PROMPT = """
 Create a new short 2048 strategy using only native Python code.
-You are given a list of list of numbers for the current board state.
-Output one action for "W", "A", "S", "D" on what is the optimal next step.
+You are given a 4x4 list of lists of integers representing the current board state (0 means empty).
+Output one action for "W" (up), "A" (left), "S" (down), "D" (right) as the optimal next move.
 Output your new short function in backticks using the format below:
 ```python
 def strategy(board):
     return "W" # Example
 ```
-All helper functions should be inside def strategy. Only output the short function `strategy`.
+All helper functions must be defined inside `strategy`. Only output the short function `strategy`.
 """.strip()
 
 def make_row(idx: int, split: str) -> dict:

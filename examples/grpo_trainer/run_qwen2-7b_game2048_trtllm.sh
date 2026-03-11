@@ -23,7 +23,7 @@ set -x
 VERL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOG_DIR="${VERL_ROOT}/my_logs"
 mkdir -p "$LOG_DIR"
-LOG_FILE="${LOG_DIR}/2048_log_$(date +%Y%m%d_%H%M%S).txt"
+LOG_FILE="${LOG_DIR}/qwen2-7b-game2048-trtllm-log_$(date +%Y%m%d_%H%M%S).txt"
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "Logging to $LOG_FILE"
 
@@ -37,7 +37,7 @@ export RAY_DEDUP_LOGS=0
 # -----------------------------------------------------------------------
 # Config
 # -----------------------------------------------------------------------
-TP=${1:-4}
+TP=${1:-8}
 MODEL_PATH=${MODEL_PATH:-"Qwen/Qwen2.5-Coder-7B-Instruct"}
 DATADIR=${DATADIR:-"$HOME/data/game2048"}
 
@@ -62,8 +62,8 @@ python3 -m verl.trainer.main_ppo \
     \
     data.train_files="['$TRAIN_PATH']" \
     data.val_files="['$TEST_PATH']" \
-    data.train_batch_size=256 \
-    data.max_prompt_length=512 \
+    data.train_batch_size=1 \
+    data.max_prompt_length=256 \
     data.max_response_length=1024 \
     data.return_raw_chat=True \
     data.filter_overlong_prompts=True \
@@ -75,8 +75,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     \
     actor_rollout_ref.actor.optim.lr=1e-6 \
-    actor_rollout_ref.actor.ppo_mini_batch_size=256 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=16 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=2 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.001 \
     actor_rollout_ref.actor.kl_loss_type=low_var_kl \
@@ -111,5 +111,5 @@ python3 -m verl.trainer.main_ppo \
     trainer.save_freq=-1 \
     trainer.test_freq=5 \
     trainer.resume_mode=disable \
-    trainer.total_epochs=15 \
+    trainer.total_epochs=1 \
     "${@:2}"

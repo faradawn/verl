@@ -233,20 +233,31 @@ def check_python_modules(code: str) -> Tuple[bool, dict]:
     return ok, {"stdlib": stdlib, "non_stdlib": non_stdlib, "relative_imports": relative_imports}
 
 
+def _make_safe_import():
+    """Return a restricted __import__ that only allows stdlib modules."""
+    import importlib
+
+    def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+        top = name.split(".")[0]
+        if top not in _STDLIB_MODULES:
+            raise ImportError(f"Import of non-stdlib module '{name}' is not allowed")
+        return importlib.__import__(name, globals, locals, fromlist, level)
+
+    return _safe_import
+
+
 def create_locked_down_function(code: str) -> Callable:
     """
     exec `code` in a restricted namespace (no builtins globals leak) and
     return the `strategy` callable defined inside.
     """
-    # Provide a minimal set of safe builtins
+    builtins_src = __builtins__ if isinstance(__builtins__, dict) else vars(__builtins__)
     safe_builtins = {
-        k: v for k, v in __builtins__.items()
-        if k not in ("open", "exec", "eval", "compile", "__import__", "input")
-    } if isinstance(__builtins__, dict) else {
-        k: getattr(__builtins__, k)
-        for k in dir(__builtins__)
+        k: v for k, v in builtins_src.items()
         if k not in ("open", "exec", "eval", "compile", "__import__", "input")
     }
+    # Allow stdlib imports but block third-party packages
+    safe_builtins["__import__"] = _make_safe_import()
 
     ns = {"__builtins__": safe_builtins}
     exec(compile(code, "<strategy>", "exec"), ns)  # noqa: S102
@@ -260,7 +271,9 @@ def create_locked_down_function(code: str) -> Callable:
 
 
 class _TimeoutError(Exception):
-    pass
+    def __init__(self, msg, steps=0):
+        super().__init__(msg)
+        self.steps = steps
 
 
 def execute_strategy_with_timeout(strategy: Callable, game: GameBoard, timeout_seconds: int = 5):
@@ -273,7 +286,7 @@ def execute_strategy_with_timeout(strategy: Callable, game: GameBoard, timeout_s
     steps = 0
     while game.state() == "ongoing":
         if time.time() > deadline:
-            raise _TimeoutError("Strategy timed out")
+            raise _TimeoutError("Strategy timed out", steps=steps)
         action = strategy(list(game.board()))
         steps += 1
         if not isinstance(action, str):
@@ -306,8 +319,6 @@ def extract_function(text: str) -> Optional[str]:
 # Top-level compute_score (verl interface)
 # ---------------------------------------------------------------------------
 
-_PRINTER = 0  # module-level counter, increments per sample (per Ray worker)
-
 
 def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dict] = None) -> float:
     """
@@ -324,38 +335,32 @@ def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dic
           no_cheating     (+1.0 stdlib-only / -20.0 uses third-party libs)
           strategy_result (+20.0 wins / +2.0 runs but loses / -1.0 timeout / 0 crash)
     """
-    global _PRINTER
     import numpy as np
 
     function = extract_function(solution_str)
 
-    should_print = (_PRINTER % 5 == 0)
-    _PRINTER += 1
-
     # ---- function_works ----
     if function is None:
-        if should_print:
-            print(f"[2048] sample {_PRINTER} | no function found | score=-2.0")
-        return -2.0  # No function found at all
+        print("[2048] no function found | score=-2.0")
+        return -2.0
 
     ok, info = check_python_modules(function)
     if "error" in info:
-        if should_print:
-            print(f"[2048] sample {_PRINTER} | syntax error | score=-2.0\n{function}\n")
-        return -2.0  # Syntax error
+        print(f"[2048] syntax error | score=-2.0\n{function}\n")
+        return -2.0
 
     try:
         strategy_fn = create_locked_down_function(function)
-    except Exception:
-        return -0.5  # exec failed
+    except Exception as e:
+        print(f"[2048] exec failed | score=-0.5 | {type(e).__name__}: {e}\n{function}\n")
+        return -0.5
 
     score = 1.0  # function_works reward
 
     # ---- no_cheating ----
     if not ok:
         score += -20.0
-        if should_print:
-            print(f"[2048] sample {_PRINTER} | cheating detected | score={score}\n{function}\n")
+        print(f"[2048] cheating detected | score={score}\n{function}\n")
         return score
     else:
         score += 1.0
@@ -366,21 +371,21 @@ def compute_score(solution_str: str, ground_truth: str, extra_info: Optional[dic
     steps = 0
     exc_msg = ""
     try:
-        game = GameBoard(size=6, seed=seed, target=2048, probability_fours=0.10)
+        game = GameBoard(size=4, seed=seed, target=256, probability_fours=0.10)
         steps, game_state = execute_strategy_with_timeout(strategy_fn, game, timeout_seconds=5)
         if game_state == "success":
             score += 20.0
         else:
             score += 2.0
-    except _TimeoutError:
+    except _TimeoutError as e:
         game_state = "timeout"
+        steps = e.steps
         score += -1.0
     except Exception as e:
         game_state = "exception"
         exc_msg = f" | error={type(e).__name__}: {e}"
         score += -3.0
 
-    if should_print:
-        print(f"[2048] sample {_PRINTER} | steps={steps} state={game_state} score={score}{exc_msg}\n{function}\n")
+    print(f"[2048] steps={steps} state={game_state} score={score}{exc_msg}\n{function}\n")
 
     return score
