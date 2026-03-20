@@ -34,7 +34,7 @@ if [ ! -f "$TRAIN_PATH" ] || [ ! -f "$TEST_PATH" ]; then
 fi
 
 PROJECT_NAME=${PROJECT_NAME:-"verl_grpo_game2048"}
-EXP_NAME="trtllm-qwen2.5-coder-7b-game2048-tp${TP}-8gpus${EXP_NAME_SUFFIX:+"-"}${EXP_NAME_SUFFIX}"
+EXP_NAME="GRPO-Qwen2.5-Coder-Game2048"
 
 if [ $TP -eq 4 ]; then
     MAX_BATCH_SIZE=1024
