@@ -21,8 +21,8 @@ export RAY_DEDUP_LOGS=0
 # -----------------------------------------------------------------------
 # Config
 # -----------------------------------------------------------------------
-TP=${1:-4}
 N_GPUS=${N_GPUS:-$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)}
+TP=${1:-${N_GPUS}}
 MODEL_PATH=${MODEL_PATH:-"Qwen/Qwen2.5-Coder-7B-Instruct"}
 DATADIR=${DATADIR:-"$HOME/data/game2048"}
 
