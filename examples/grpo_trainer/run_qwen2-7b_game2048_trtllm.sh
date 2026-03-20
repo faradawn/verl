@@ -1,13 +1,5 @@
 #!/usr/bin/env bash
-# Train Qwen2-7B-Instruct to generate 2048 game strategies via GRPO + trtllm.
-# Before running, generate the dataset:
-#   python examples/data_preprocess/game2048.py --local_save_dir ~/data/game2048
-#
-# Usage:
-#   bash examples/grpo_trainer/run_qwen2-7b_game2048_trtllm.sh         # TP=4
-#   bash examples/grpo_trainer/run_qwen2-7b_game2048_trtllm.sh 2       # TP=2
-
-set -x
+set -xeuo pipefail
 
 # -----------------------------------------------------------------------
 # Logging — tee output to 2048_log_<date>_<time>.txt next to this script
